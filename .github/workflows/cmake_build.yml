@@ -1,0 +1,63 @@
+name: Build
+
+on:
+  workflow_dispatch:
+    branches: [main]
+    inputs:
+      buildType:
+        description: "Build Type"
+        required: false
+        default: "MinSizeRel"
+        type: choice
+        options:
+          - Debug
+          - Release
+          - RelWithDebInfo
+          - MinSizeRel
+
+jobs:
+  build:
+    runs-on: windows-2022
+    env:
+      BUILD_TYPE: ${{ inputs.buildType }}
+
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v3
+        with:
+          submodules: "recursive"
+
+      - name: Install conan
+        run: pip install "conan>2.0"
+      
+      - name: Cache Conan packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.conan2/p
+          key: ${{ runner.os }}-conan-${{ hashFiles('conanfile.py') }}
+          restore-keys: ${{ runner.os }}-conan-
+
+      - name: Cache CMake
+        id: cache-cmake
+        uses: actions/cache@v3
+        with:
+          path: ${{github.workspace}}/build
+          key: ${{ runner.os }}-cmake
+
+      - name: Configure CMake
+        run: cmake -B ${{github.workspace}}\build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DGTPROXY_BUILD_VERSION=${{github.run_number}}
+
+      - name: Build
+        run: cmake --build ${{github.workspace}}\build --config ${{env.BUILD_TYPE}}
+
+      - name: Move program and binary
+        run: |
+          mkdir ${{github.workspace}}\output
+          copy ${{github.workspace}}\build\src\${{env.BUILD_TYPE}}\*.exe ${{github.workspace}}\output
+          copy ${{github.workspace}}\build\conan\build\*.dll ${{github.workspace}}\output
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: gtproxy-${{github.sha}}
+          path: ${{github.workspace}}\output
